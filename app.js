@@ -138,12 +138,16 @@ function extractSteamId64(raw) {
 
 // ── Fetch Steam API with CORS proxy cascade ──────────────────────
 const CORS_PROXIES = [
-  // 1. corsproxy.io - 支持自定义 header 透传
+  // 1. 自建 Deno 代理（优先，支持所有 Steam 域名）
+  url => {
+    const proxyUrl = new URL('https://steam-cors-proxy-257523kk0wsw.claudwang.deno.net/');
+    proxyUrl.searchParams.set('target', url);
+    return { url: proxyUrl.toString(), headers: {} };
+  },
+  // 2. corsproxy.io - 备选
   url => ({ url: `https://corsproxy.io/?${encodeURIComponent(url)}`, headers: {} }),
-  // 2. allorigins
+  // 3. allorigins - 备选
   url => ({ url: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, headers: {} }),
-  // 3. 直连（适合部分非严格 CORS 的接口，如 Steam Web API）
-  url => ({ url, headers: { 'Origin': 'https://steamcommunity.com' } }),
 ];
 
 async function fetchWithProxy(url) {
