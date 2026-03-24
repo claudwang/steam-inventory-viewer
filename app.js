@@ -26,7 +26,7 @@ const state = {
 // 方案3: 通过 steam.tools 镜像接口
 // 方案4: 直连 + 降级提示
 
-const CF_WORKER_URL = 'https://steam-inv-proxy.mrclaudwang.workers.dev'; // Cloudflare Worker 代理
+const CF_WORKER_URL = 'https://steam-cors-proxy-257523kk0wsw.claudwang.deno.net'; // Deno Deploy 代理
 
 // 构建各种可能的库存请求 URL
 function buildInventoryUrls(sid64, appid, ctxid) {
