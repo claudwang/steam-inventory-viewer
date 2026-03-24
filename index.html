@@ -257,8 +257,11 @@
     <div class="error-state" id="errorState" style="display:none">
       <div class="error-icon">⚠️</div>
       <h3 id="errorTitle">加载失败</h3>
-      <p id="errorMsg">请检查 API Key 和 SteamID 是否正确</p>
-      <button class="btn-primary" onclick="resetView()">重新输入</button>
+      <p id="errorMsg" style="white-space:pre-line">请检查 API Key 和 SteamID 是否正确</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px">
+        <button class="btn-primary" style="width:auto;padding:10px 24px" onclick="resetView()">重新输入</button>
+        <button class="btn-secondary" id="errorHelpBtn" style="display:none" onclick="showCorsHelp()">如何解决 CORS 问题？</button>
+      </div>
     </div>
 
     <!-- Empty State -->
@@ -283,6 +286,46 @@
     <div class="modal" id="itemModal">
       <button class="modal-close" onclick="closeModal()">✕</button>
       <div class="modal-content" id="modalContent"></div>
+    </div>
+  </div>
+
+  <!-- CORS Help Modal -->
+  <div class="modal-overlay" id="corsHelpOverlay" onclick="closeCorsHelp(event)">
+    <div class="modal" id="corsHelpModal" style="max-width:560px">
+      <button class="modal-close" onclick="closeCorsHelp()">✕</button>
+      <div style="font-size:24px;margin-bottom:12px">🔧</div>
+      <h2 style="margin-bottom:8px;font-size:20px">解决浏览器 CORS 限制</h2>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:20px;line-height:1.6">
+        Steam 对跨域请求做了严格限制，导致网页无法直接读取库存数据。以下几种方式可以解决：
+      </p>
+
+      <div class="cors-method">
+        <div class="cors-method-title">⭐ 方式一：安装 CORS 浏览器扩展（推荐）</div>
+        <div class="cors-method-body">
+          <p>安装以下任意一个扩展，然后刷新页面重试：</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <a href="https://chrome.google.com/webstore/detail/allow-cors/lcbkllndggiiihjhlpphofbhjhgobelf" target="_blank" class="btn-secondary" style="text-decoration:none;font-size:12px">Chrome: Allow CORS</a>
+            <a href="https://addons.mozilla.org/en-US/firefox/addon/cors-everywhere/" target="_blank" class="btn-secondary" style="text-decoration:none;font-size:12px">Firefox: CORS Everywhere</a>
+          </div>
+          <p style="color:var(--text3);font-size:11px;margin-top:8px">⚠️ 注意：使用时只对此页面启用，其他网站使用完后及时关闭</p>
+        </div>
+      </div>
+
+      <div class="cors-method">
+        <div class="cors-method-title">方式二：本地运行（更安全）</div>
+        <div class="cors-method-body">
+          <p>下载源码后用本地服务器运行，无 CORS 限制：</p>
+          <code class="cors-code">python -m http.server 8080</code>
+          <p style="color:var(--text3);font-size:11px;margin-top:6px">然后访问 http://localhost:8080</p>
+        </div>
+      </div>
+
+      <div class="cors-method">
+        <div class="cors-method-title">方式三：自建 Cloudflare Worker（永久方案）</div>
+        <div class="cors-method-body">
+          <p>在 Cloudflare Workers 部署一个专用代理，详见项目 README。</p>
+        </div>
+      </div>
     </div>
   </div>
 
