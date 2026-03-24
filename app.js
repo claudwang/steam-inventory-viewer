@@ -174,7 +174,10 @@ async function fetchSteamInventory(sid64, appid, ctxid) {
   // ── 方案 A: 自建 Deno 代理（最可靠）──
   if (CF_WORKER_URL) {
     try {
-      const proxyUrl = `${CF_WORKER_URL}?target=${encodeURIComponent(steamUrl)}`;
+      // 浏览器 fetch 会自动对 URL 做一层编码，所以这里用 encodeURIComponent 会造成双重编码
+      // 解决方案：用 btoa 编码 target，代理端 atob 解码，完全绕开 URL 编码问题
+      const encodedTarget = btoa(unescape(encodeURIComponent(steamUrl)));
+      const proxyUrl = `${CF_WORKER_URL}?b64target=${encodedTarget}`;
       const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
       const text = await res.text();
       console.log(`[Deno Proxy] status=${res.status}, preview=${text.substring(0, 80)}`);
