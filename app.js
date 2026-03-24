@@ -167,92 +167,64 @@ async function fetchWithProxy(url) {
 }
 
 // ── Fetch Steam Inventory specifically ───────────────────────────
-// Steam 库存接口有特殊的反 CORS 限制，需要特殊处理
 async function fetchSteamInventory(sid64, appid, ctxid) {
   const errors = [];
+  const steamUrl = STEAM_INV_URL(sid64, appid, ctxid);
 
-  // ── 方案 A: 自建 CF Worker（最可靠）──
+  // ── 方案 A: 自建 Deno 代理（最可靠）──
   if (CF_WORKER_URL) {
     try {
-      const target = STEAM_INV_URL(sid64, appid, ctxid);
-      const res = await fetch(`${CF_WORKER_URL}?target=${encodeURIComponent(target)}`, {
-        signal: AbortSignal.timeout(12000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        console.log('[CF Worker] success');
+      const proxyUrl = `${CF_WORKER_URL}?target=${encodeURIComponent(steamUrl)}`;
+      const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
+      const text = await res.text();
+      console.log(`[Deno Proxy] status=${res.status}, preview=${text.substring(0, 80)}`);
+
+      let data;
+      try { data = JSON.parse(text); } catch (_) { throw new Error(`Non-JSON: ${text.substring(0,100)}`); }
+
+      // 代理正常转发，Steam 返回库存为私密或空
+      if (data.rwgrsn === -2) throw new Error('PRIVATE_INVENTORY');
+      // 代理正常，有数据（即使 assets 为空也返回，让上层处理）
+      if (data.success !== undefined || data.assets !== undefined) {
+        console.log('[Deno Proxy] success');
         return data;
       }
+      // 代理返回了错误 JSON（如 {error: "..."})
+      if (data.error) throw new Error(`Proxy error: ${data.error}`);
+      // 其他情况也尝试返回
+      return data;
     } catch (e) {
-      errors.push(`CF Worker: ${e.message}`);
-      console.warn('[CF Worker] failed:', e.message);
+      if (e.message === 'PRIVATE_INVENTORY') throw e;
+      errors.push(`Deno Proxy: ${e.message}`);
+      console.warn('[Deno Proxy] failed:', e.message);
     }
   }
 
-  // ── 方案 B: steamapis.com 公开镜像（专门代理 Steam，带正确 Referer）──
-  // 此服务专门处理 Steam 库存请求，绕过 CORS
-  const mirrorUrls = [
-    `https://api.steamapis.com/steam/inventory/${sid64}/${appid}/${ctxid}?api_key=`,
-  ];
-
-  for (const mUrl of mirrorUrls) {
-    try {
-      const res = await fetch(mUrl, { signal: AbortSignal.timeout(10000) });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && (data.assets || data.descriptions)) {
-          console.log('[Mirror] success:', mUrl);
-          return data;
-        }
-      }
-    } catch (e) {
-      errors.push(`Mirror ${mUrl}: ${e.message}`);
-    }
-  }
-
-  // ── 方案 C: corsproxy.io + Steam 官方 URL ──
-  // Steam 对某些地区/IP 的代理会 403，但可以一试
-  const steamUrl = STEAM_INV_URL(sid64, appid, ctxid);
+  // ── 方案 B: corsproxy.io ──
   const proxyConfigs = [
     { name: 'corsproxy.io', url: `https://corsproxy.io/?${encodeURIComponent(steamUrl)}` },
     { name: 'allorigins', url: `https://api.allorigins.win/raw?url=${encodeURIComponent(steamUrl)}` },
-    { name: 'corsproxy.org', url: `https://www.corsproxy.org/?${encodeURIComponent(steamUrl)}` },
   ];
 
   for (const cfg of proxyConfigs) {
     try {
       const res = await fetch(cfg.url, { signal: AbortSignal.timeout(10000) });
-      if (res.ok) {
-        const text = await res.text();
-        const data = JSON.parse(text);
-        if (data && (data.assets !== undefined || data.success !== undefined)) {
-          console.log(`[${cfg.name}] success`);
-          return data;
-        }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      const data = JSON.parse(text);
+      if (data.rwgrsn === -2) throw new Error('PRIVATE_INVENTORY');
+      if (data.assets !== undefined || data.success !== undefined) {
+        console.log(`[${cfg.name}] success`);
+        return data;
       }
-      throw new Error(`HTTP ${res.status}`);
     } catch (e) {
+      if (e.message === 'PRIVATE_INVENTORY') throw e;
       errors.push(`${cfg.name}: ${e.message}`);
       console.warn(`[${cfg.name}] failed:`, e.message);
     }
   }
 
-  // ── 方案 D: 直连尝试（通常会被 CORS 拦截，但某些浏览器扩展环境可行）──
-  try {
-    const res = await fetch(steamUrl, {
-      signal: AbortSignal.timeout(8000),
-      mode: 'cors',
-    });
-    if (res.ok) {
-      const data = await res.json();
-      console.log('[Direct] success');
-      return data;
-    }
-  } catch (e) {
-    errors.push(`Direct: ${e.message}`);
-  }
-
-  // 全部失败，抛出详细错误
+  // 全部失败
   throw new Error(`CORS_ALL_FAILED: ${errors.slice(0, 3).join(' | ')}`);
 }
 
@@ -326,12 +298,16 @@ async function fetchAndRenderInventory(steamId64, appId, ctxId, apiKey) {
     try {
       data = await fetchSteamInventory(steamId64, appId, ctxId);
     } catch (e) {
+      if (e.message === 'PRIVATE_INVENTORY') {
+        showError('库存设为私密', '该账户的库存未公开。\n\n请在 Steam 客户端中：\n个人资料 → 编辑个人资料 → 隐私设置\n将「游戏详细信息」和「库存」设为公开。');
+        return;
+      }
       const isCorsErr = e.message.includes('CORS_ALL_FAILED') || e.message.includes('Failed to fetch') || e.message.includes('NetworkError');
       if (isCorsErr) {
         showError(
-          '浏览器 CORS 限制',
-          '⚠️ Steam 对跨域请求做了严格限制，当前所有代理均不可用。\n\n推荐解决方法：\n① 安装浏览器扩展「CORS Unblock」或「Allow CORS」，临时放行\n② 或使用下方「如何解决」按钮查看详细说明',
-          true  // show help button
+          '网络请求失败',
+          '代理服务暂时无法连接 Steam，可能是网络问题或 Steam 限速。\n\n建议稍后重试，或检查网络连接。',
+          false
         );
       } else {
         showError('无法加载库存', `可能原因：库存未设为公开、Steam 服务暂时不可用。\n${e.message}`);
@@ -346,6 +322,12 @@ async function fetchAndRenderInventory(steamId64, appId, ctxId, apiKey) {
 
     const assets = data.assets || [];
     const descriptions = data.descriptions || [];
+
+    // total_inventory_count 为 0 且 rwgrsn 为 -2 说明库存私密（兜底判断）
+    if (assets.length === 0 && data.total_inventory_count === 0 && data.rwgrsn === -2) {
+      showError('库存设为私密', '该账户的库存未公开。\n\n请在 Steam 客户端中：\n个人资料 → 编辑个人资料 → 隐私设置\n将「游戏详细信息」和「库存」设为公开。');
+      return;
+    }
 
     if (assets.length === 0) {
       updateUserInfo(playerInfo, steamId64, appId, 0);
