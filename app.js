@@ -30,7 +30,7 @@ const CF_WORKER_URL = 'https://steam-cors-proxy-257523kk0wsw.claudwang.deno.net'
 
 // 构建各种可能的库存请求 URL
 function buildInventoryUrls(sid64, appid, ctxid) {
-  const steamUrl = `https://steamcommunity.com/inventory/${sid64}/${appid}/${ctxid}?l=schinese&count=5000`;
+  const steamUrl = `https://steamcommunity.com/inventory/${sid64}/${appid}/${ctxid}?l=schinese&count=2000`;
   const urls = [];
 
   // 0. 自建 CF Worker（最优先，如果配置了的话）
@@ -49,7 +49,7 @@ function buildInventoryUrls(sid64, appid, ctxid) {
 
 // Steam API endpoint
 const STEAM_INV_URL = (sid64, appid, ctxid = 2) =>
-  `https://steamcommunity.com/inventory/${sid64}/${appid}/${ctxid}?l=schinese&count=5000`;
+  `https://steamcommunity.com/inventory/${sid64}/${appid}/${ctxid}?l=schinese&count=2000`;
 
 // ── Init ────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
