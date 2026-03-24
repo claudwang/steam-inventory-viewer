@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Steam Inventory Viewer</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <!-- Background particles -->
+  <div class="bg-particles" id="bgParticles"></div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="15" stroke="url(#logoGrad)" stroke-width="2"/>
+          <path d="M16 8C11.6 8 8 11.6 8 16s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8zm0 14c-3.3 0-6-2.7-6-6s2.7-6 6-6 6 2.7 6 6-2.7 6-6 6z" fill="url(#logoGrad)"/>
+          <circle cx="16" cy="16" r="3" fill="url(#logoGrad)"/>
+          <defs>
+            <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32">
+              <stop offset="0%" stop-color="#66c0f4"/>
+              <stop offset="100%" stop-color="#1b2838"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <span>Steam <span class="accent">Inventory</span></span>
+      </div>
+      <nav class="header-nav">
+        <a href="#" class="nav-link active">库存</a>
+        <a href="#" class="nav-link">市场</a>
+        <a href="#" class="nav-link">关于</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero / Auth Section -->
+  <section class="hero" id="heroSection">
+    <div class="hero-content">
+      <div class="hero-badge">Steam Web API 驱动</div>
+      <h1 class="hero-title">查看你的<br/><span class="gradient-text">Steam 游戏库存</span></h1>
+      <p class="hero-desc">输入你的 Steam API Key 和 SteamID，即可查看并管理你的游戏道具库存。安全、快速、一目了然。</p>
+
+      <div class="auth-card" id="authCard">
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="apikey">API Key 模式</button>
+          <button class="auth-tab" data-tab="public">公开库存</button>
+        </div>
+
+        <!-- API Key Tab -->
+        <div class="tab-content active" id="tabApikey">
+          <div class="form-group">
+            <label>Steam API Key</label>
+            <div class="input-wrapper">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+              </svg>
+              <input type="password" id="apiKeyInput" placeholder="输入你的 Steam API Key" autocomplete="off" />
+              <button class="toggle-visible" onclick="toggleVisible('apiKeyInput', this)" title="显示/隐藏">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
+            <span class="form-hint">前往 <a href="https://steamcommunity.com/dev/apikey" target="_blank">steamcommunity.com/dev/apikey</a> 获取</span>
+          </div>
+          <div class="form-group">
+            <label>Steam ID <span class="label-sub">（64位数字）</span></label>
+            <div class="input-wrapper">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+              <input type="text" id="steamIdInput" placeholder="例：76561198xxxxxxxxx" />
+            </div>
+            <span class="form-hint">在 Steam 个人资料页 URL 中查看，或用 <a href="https://steamidfinder.com" target="_blank">SteamIDFinder</a></span>
+          </div>
+          <div class="form-group">
+            <label>游戏 AppID <span class="label-sub">（可选，留空查全部）</span></label>
+            <div class="input-wrapper">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+              </svg>
+              <input type="text" id="appIdInput" placeholder="730 = CS2, 570 = Dota2, 440 = TF2 ..." />
+            </div>
+            <div class="quick-games">
+              <span class="qg-label">快选：</span>
+              <button class="qg-btn" onclick="setAppId('730')">CS2</button>
+              <button class="qg-btn" onclick="setAppId('570')">Dota 2</button>
+              <button class="qg-btn" onclick="setAppId('440')">TF2</button>
+              <button class="qg-btn" onclick="setAppId('252490')">Rust</button>
+              <button class="qg-btn" onclick="setAppId('')">全部</button>
+            </div>
+          </div>
+          <button class="btn-primary" onclick="loadInventory()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            查看库存
+          </button>
+        </div>
+
+        <!-- Public Tab -->
+        <div class="tab-content" id="tabPublic">
+          <div class="form-group">
+            <label>Steam ID 或个人主页链接</label>
+            <div class="input-wrapper">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+              <input type="text" id="publicSteamIdInput" placeholder="76561198xxxxxxxxx 或 steamcommunity.com/id/xxx" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>游戏</label>
+            <div class="quick-games" style="margin-top:8px">
+              <button class="qg-btn active" onclick="setPublicAppId('730', this)">CS2</button>
+              <button class="qg-btn" onclick="setPublicAppId('570', this)">Dota 2</button>
+              <button class="qg-btn" onclick="setPublicAppId('440', this)">TF2</button>
+              <button class="qg-btn" onclick="setPublicAppId('252490', this)">Rust</button>
+            </div>
+          </div>
+          <div class="public-notice">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+            </svg>
+            公开模式无需 API Key，但需要对方 Steam 库存设置为公开
+          </div>
+          <button class="btn-primary" onclick="loadPublicInventory()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            查看公开库存
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-visual">
+      <div class="preview-cards">
+        <div class="preview-card pc1">
+          <div class="pc-rarity legendary"></div>
+          <div class="pc-img">🔪</div>
+          <div class="pc-name">★ Karambit</div>
+          <div class="pc-price">¥ 4,200</div>
+        </div>
+        <div class="preview-card pc2">
+          <div class="pc-rarity rare"></div>
+          <div class="pc-img">🔫</div>
+          <div class="pc-name">AK-47 | Redline</div>
+          <div class="pc-price">¥ 380</div>
+        </div>
+        <div class="preview-card pc3">
+          <div class="pc-rarity uncommon"></div>
+          <div class="pc-img">🎯</div>
+          <div class="pc-name">AWP | Asiimov</div>
+          <div class="pc-price">¥ 520</div>
+        </div>
+        <div class="preview-card pc4">
+          <div class="pc-rarity epic"></div>
+          <div class="pc-img">🧤</div>
+          <div class="pc-name">Sport Gloves</div>
+          <div class="pc-price">¥ 2,800</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Inventory Section -->
+  <section class="inventory-section" id="inventorySection" style="display:none">
+    <div class="inv-header">
+      <div class="inv-header-left">
+        <div class="user-info" id="userInfo">
+          <img class="user-avatar" id="userAvatar" src="" alt="avatar" />
+          <div class="user-details">
+            <div class="user-name" id="userName">Loading...</div>
+            <div class="user-status" id="userStatus">Steam 库存</div>
+          </div>
+        </div>
+        <div class="inv-stats" id="invStats">
+          <div class="stat-pill"><span id="totalCount">0</span> 件物品</div>
+          <div class="stat-pill" id="totalValuePill" style="display:none">约 ¥<span id="totalValue">0</span></div>
+        </div>
+      </div>
+      <div class="inv-actions">
+        <button class="btn-secondary" onclick="resetView()">← 返回</button>
+        <button class="btn-secondary" onclick="refreshInventory()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          刷新
+        </button>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input type="text" id="searchInput" placeholder="搜索物品名称..." oninput="filterItems()" />
+      </div>
+      <div class="filter-group">
+        <select id="rarityFilter" onchange="filterItems()">
+          <option value="">所有稀有度</option>
+          <option value="Consumer Grade">消费级</option>
+          <option value="Industrial Grade">工业级</option>
+          <option value="Mil-Spec Grade">军规级</option>
+          <option value="Restricted">受限</option>
+          <option value="Classified">保密</option>
+          <option value="Covert">隐秘</option>
+          <option value="Extraordinary">非凡</option>
+        </select>
+        <select id="typeFilter" onchange="filterItems()">
+          <option value="">所有类型</option>
+          <option value="Rifle">步枪</option>
+          <option value="Pistol">手枪</option>
+          <option value="Knife">刀具</option>
+          <option value="Gloves">手套</option>
+          <option value="Sniper Rifle">狙击步枪</option>
+          <option value="SMG">冲锋枪</option>
+          <option value="Case">箱子</option>
+          <option value="Sticker">贴纸</option>
+        </select>
+        <select id="sortFilter" onchange="filterItems()">
+          <option value="name">按名称</option>
+          <option value="rarity">按稀有度</option>
+          <option value="type">按类型</option>
+        </select>
+      </div>
+      <div class="view-toggle">
+        <button class="vt-btn active" id="gridViewBtn" onclick="setView('grid', this)" title="网格视图">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+          </svg>
+        </button>
+        <button class="vt-btn" id="listViewBtn" onclick="setView('list', this)" title="列表视图">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+            <rect x="3" y="4" width="18" height="2"/><rect x="3" y="11" width="18" height="2"/>
+            <rect x="3" y="18" width="18" height="2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div class="loading-state" id="loadingState">
+      <div class="spinner"></div>
+      <p>正在加载库存数据...</p>
+    </div>
+
+    <!-- Error State -->
+    <div class="error-state" id="errorState" style="display:none">
+      <div class="error-icon">⚠️</div>
+      <h3 id="errorTitle">加载失败</h3>
+      <p id="errorMsg">请检查 API Key 和 SteamID 是否正确</p>
+      <button class="btn-primary" onclick="resetView()">重新输入</button>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" id="emptyState" style="display:none">
+      <div class="empty-icon">📦</div>
+      <h3>库存为空</h3>
+      <p>该账户在此游戏中暂无物品，或库存未设为公开</p>
+    </div>
+
+    <!-- Items Grid -->
+    <div class="items-grid" id="itemsGrid"></div>
+    <div class="items-list" id="itemsList" style="display:none"></div>
+
+    <!-- Load More -->
+    <div class="load-more-area" id="loadMoreArea" style="display:none">
+      <button class="btn-secondary load-more-btn" onclick="loadMore()">加载更多</button>
+    </div>
+  </section>
+
+  <!-- Item Detail Modal -->
+  <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+    <div class="modal" id="itemModal">
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <div class="modal-content" id="modalContent"></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <footer class="footer">
+    <p>Steam Inventory Viewer &nbsp;·&nbsp; 数据来源：Steam Web API &nbsp;·&nbsp; 仅供展示，不构成任何交易</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
