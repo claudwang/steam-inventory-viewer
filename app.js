@@ -174,7 +174,10 @@ async function fetchSteamInventory(sid64, appid, ctxid) {
   // ── 方案 A: 自建 Deno 代理（最可靠）──
   if (CF_WORKER_URL) {
     try {
-      const proxyUrl = `${CF_WORKER_URL}?target=${encodeURIComponent(steamUrl)}`;
+      // 用 URL + searchParams 构造代理 URL，避免手动 encodeURIComponent 导致的双重编码
+      const proxyUrlObj = new URL(CF_WORKER_URL);
+      proxyUrlObj.searchParams.set('target', steamUrl);
+      const proxyUrl = proxyUrlObj.toString();
       const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(15000) });
       const text = await res.text();
       console.log(`[Deno Proxy] status=${res.status}, preview=${text.substring(0, 80)}`);
