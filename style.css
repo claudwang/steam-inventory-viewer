@@ -525,6 +525,24 @@ body {
   position: relative; z-index: 1;
 }
 
+/* ── CORS Help Modal ── */
+.cors-method {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 16px; margin-bottom: 12px;
+}
+.cors-method-title {
+  font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--text);
+}
+.cors-method-body {
+  font-size: 13px; color: var(--text2); line-height: 1.6;
+}
+.cors-code {
+  display: block; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 12px; margin-top: 6px;
+  font-family: 'Consolas', monospace; font-size: 12px;
+  color: var(--accent); word-break: break-all;
+}
+
 /* ── Responsive ── */
 @media (max-width: 900px) {
   .hero {
