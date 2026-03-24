@@ -19,15 +19,35 @@ const state = {
   currentItem: null,
 };
 
-// ── CORS Proxies (cascade fallback) ────────────────────────────
-const PROXIES = [
-  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  url => `https://cors.sh/${url}`,
-];
+// ── Steam Inventory Endpoints (cascade) ────────────────────────
+// Steam 提供多种公开库存接口，按可用性优先级排列
+// 方案1: Steam 官方 inventory JSON API（需浏览器携带正确 Cookie/Referer）
+// 方案2: SteamSpy 代理（无限制）
+// 方案3: 通过 steam.tools 镜像接口
+// 方案4: 直连 + 降级提示
 
-// Steam Inventory API (no key needed, public endpoint)
-// Context length: we use the JSON inventory endpoint
+const CF_WORKER_URL = ''; // 如有自建 Cloudflare Worker，填写 URL（留空则跳过）
+
+// 构建各种可能的库存请求 URL
+function buildInventoryUrls(sid64, appid, ctxid) {
+  const steamUrl = `https://steamcommunity.com/inventory/${sid64}/${appid}/${ctxid}?l=schinese&count=5000`;
+  const urls = [];
+
+  // 0. 自建 CF Worker（最优先，如果配置了的话）
+  if (CF_WORKER_URL) {
+    urls.push({ url: `${CF_WORKER_URL}?target=${encodeURIComponent(steamUrl)}`, mode: 'json' });
+  }
+
+  // 1. steam.tools 公开镜像（专门代理 Steam 库存，通常可用）
+  urls.push({ url: `https://www.steamwebapi.com/steam/api/inventory?key=&steam_id=${sid64}&game_id=${appid}`, mode: 'steamwebapi' });
+
+  // 2. Steam 官方路径（直连，在 GitHub Pages 域名下通常会被 CORS 拦截，但可作为最后一试）
+  urls.push({ url: steamUrl, mode: 'json' });
+
+  return urls;
+}
+
+// Steam API endpoint
 const STEAM_INV_URL = (sid64, appid, ctxid = 2) =>
   `https://steamcommunity.com/inventory/${sid64}/${appid}/${ctxid}?l=schinese&count=5000`;
 
@@ -116,22 +136,124 @@ function extractSteamId64(raw) {
   return null;
 }
 
-// ── Fetch with proxy cascade ─────────────────────────────────────
+// ── Fetch Steam API with CORS proxy cascade ──────────────────────
+const CORS_PROXIES = [
+  // 1. corsproxy.io - 支持自定义 header 透传
+  url => ({ url: `https://corsproxy.io/?${encodeURIComponent(url)}`, headers: {} }),
+  // 2. allorigins
+  url => ({ url: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, headers: {} }),
+  // 3. 直连（适合部分非严格 CORS 的接口，如 Steam Web API）
+  url => ({ url, headers: { 'Origin': 'https://steamcommunity.com' } }),
+];
+
 async function fetchWithProxy(url) {
   let lastErr;
-  for (const proxy of PROXIES) {
+  for (const buildReq of CORS_PROXIES) {
     try {
-      const proxied = proxy(url);
-      const res = await fetch(proxied, { signal: AbortSignal.timeout(10000) });
+      const { url: reqUrl, headers } = buildReq(url);
+      const res = await fetch(reqUrl, {
+        signal: AbortSignal.timeout(12000),
+        headers,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = await res.text();
       return JSON.parse(text);
     } catch (e) {
       lastErr = e;
-      console.warn(`Proxy failed: ${e.message}`);
+      console.warn(`[fetchWithProxy] failed:`, e.message);
     }
   }
   throw lastErr || new Error('All proxies failed');
+}
+
+// ── Fetch Steam Inventory specifically ───────────────────────────
+// Steam 库存接口有特殊的反 CORS 限制，需要特殊处理
+async function fetchSteamInventory(sid64, appid, ctxid) {
+  const errors = [];
+
+  // ── 方案 A: 自建 CF Worker（最可靠）──
+  if (CF_WORKER_URL) {
+    try {
+      const target = STEAM_INV_URL(sid64, appid, ctxid);
+      const res = await fetch(`${CF_WORKER_URL}?target=${encodeURIComponent(target)}`, {
+        signal: AbortSignal.timeout(12000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        console.log('[CF Worker] success');
+        return data;
+      }
+    } catch (e) {
+      errors.push(`CF Worker: ${e.message}`);
+      console.warn('[CF Worker] failed:', e.message);
+    }
+  }
+
+  // ── 方案 B: steamapis.com 公开镜像（专门代理 Steam，带正确 Referer）──
+  // 此服务专门处理 Steam 库存请求，绕过 CORS
+  const mirrorUrls = [
+    `https://api.steamapis.com/steam/inventory/${sid64}/${appid}/${ctxid}?api_key=`,
+  ];
+
+  for (const mUrl of mirrorUrls) {
+    try {
+      const res = await fetch(mUrl, { signal: AbortSignal.timeout(10000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && (data.assets || data.descriptions)) {
+          console.log('[Mirror] success:', mUrl);
+          return data;
+        }
+      }
+    } catch (e) {
+      errors.push(`Mirror ${mUrl}: ${e.message}`);
+    }
+  }
+
+  // ── 方案 C: corsproxy.io + Steam 官方 URL ──
+  // Steam 对某些地区/IP 的代理会 403，但可以一试
+  const steamUrl = STEAM_INV_URL(sid64, appid, ctxid);
+  const proxyConfigs = [
+    { name: 'corsproxy.io', url: `https://corsproxy.io/?${encodeURIComponent(steamUrl)}` },
+    { name: 'allorigins', url: `https://api.allorigins.win/raw?url=${encodeURIComponent(steamUrl)}` },
+    { name: 'corsproxy.org', url: `https://www.corsproxy.org/?${encodeURIComponent(steamUrl)}` },
+  ];
+
+  for (const cfg of proxyConfigs) {
+    try {
+      const res = await fetch(cfg.url, { signal: AbortSignal.timeout(10000) });
+      if (res.ok) {
+        const text = await res.text();
+        const data = JSON.parse(text);
+        if (data && (data.assets !== undefined || data.success !== undefined)) {
+          console.log(`[${cfg.name}] success`);
+          return data;
+        }
+      }
+      throw new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      errors.push(`${cfg.name}: ${e.message}`);
+      console.warn(`[${cfg.name}] failed:`, e.message);
+    }
+  }
+
+  // ── 方案 D: 直连尝试（通常会被 CORS 拦截，但某些浏览器扩展环境可行）──
+  try {
+    const res = await fetch(steamUrl, {
+      signal: AbortSignal.timeout(8000),
+      mode: 'cors',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      console.log('[Direct] success');
+      return data;
+    }
+  } catch (e) {
+    errors.push(`Direct: ${e.message}`);
+  }
+
+  // 全部失败，抛出详细错误
+  throw new Error(`CORS_ALL_FAILED: ${errors.slice(0, 3).join(' | ')}`);
 }
 
 // ── Load Inventory (API Key mode) ───────────────────────────────
@@ -200,17 +322,25 @@ async function fetchAndRenderInventory(steamId64, appId, ctxId, apiKey) {
     }
 
     // 2. Fetch inventory
-    const invUrl = STEAM_INV_URL(steamId64, appId, ctxId);
     let data;
     try {
-      data = await fetchWithProxy(invUrl);
+      data = await fetchSteamInventory(steamId64, appId, ctxId);
     } catch (e) {
-      showError('无法加载库存', `可能原因：库存未设为公开、网络受限或代理服务暂时不可用。\n${e.message}`);
+      const isCorsErr = e.message.includes('CORS_ALL_FAILED') || e.message.includes('Failed to fetch') || e.message.includes('NetworkError');
+      if (isCorsErr) {
+        showError(
+          '浏览器 CORS 限制',
+          '⚠️ Steam 对跨域请求做了严格限制，当前所有代理均不可用。\n\n推荐解决方法：\n① 安装浏览器扩展「CORS Unblock」或「Allow CORS」，临时放行\n② 或使用下方「如何解决」按钮查看详细说明',
+          true  // show help button
+        );
+      } else {
+        showError('无法加载库存', `可能原因：库存未设为公开、Steam 服务暂时不可用。\n${e.message}`);
+      }
       return;
     }
 
     if (!data || data.success === false) {
-      showError('库存加载失败', '该账户的库存可能设为私密，或该游戏暂无库存。');
+      showError('库存加载失败', '该账户的库存可能设为私密，或该 SteamID 不存在。\n请确认：Steam 个人资料 → 隐私设置 → 游戏详情/库存设为公开');
       return;
     }
 
@@ -528,11 +658,13 @@ function hideLoading() {
   document.getElementById('loadingState').style.display = 'none';
 }
 
-function showError(title, msg) {
+function showError(title, msg, showHelp = false) {
   hideLoading();
   document.getElementById('errorState').style.display = 'block';
   document.getElementById('errorTitle').textContent = title;
   document.getElementById('errorMsg').textContent = msg;
+  const helpBtn = document.getElementById('errorHelpBtn');
+  if (helpBtn) helpBtn.style.display = showHelp ? 'inline-flex' : 'none';
 }
 
 function updateUserInfo(playerInfo, steamId64, appId, count) {
@@ -579,5 +711,16 @@ function escHtml(str) {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.getElementById('modalOverlay').classList.remove('open');
+    document.getElementById('corsHelpOverlay').classList.remove('open');
   }
 });
+
+// ── CORS Help Modal ──────────────────────────────────────────────
+function showCorsHelp() {
+  document.getElementById('corsHelpOverlay').classList.add('open');
+}
+
+function closeCorsHelp(e) {
+  if (e && e.target !== document.getElementById('corsHelpOverlay')) return;
+  document.getElementById('corsHelpOverlay').classList.remove('open');
+}
