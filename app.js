@@ -189,9 +189,9 @@ async function fetchSteamInventory(sid64, appid, ctxid) {
       let data;
       try { data = JSON.parse(text); } catch (_) { throw new Error(`Non-JSON: ${text.substring(0,100)}`); }
 
-      // 代理正常转发，Steam 返回库存为私密或空
-      if (data.rwgrsn === -2) throw new Error('PRIVATE_INVENTORY');
       // 代理正常，有数据（即使 assets 为空也返回，让上层处理）
+      // 注意：rwgrsn=-2 不代表整个库存私密，可能只是部分物品受交易限制
+      // 只有 assets 为空时才由上层判断是否私密
       if (data.success !== undefined || data.assets !== undefined) {
         console.log('[Deno Proxy] success');
         return data;
@@ -219,7 +219,7 @@ async function fetchSteamInventory(sid64, appid, ctxid) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = await res.text();
       const data = JSON.parse(text);
-      if (data.rwgrsn === -2) throw new Error('PRIVATE_INVENTORY');
+      // rwgrsn=-2 不代表整个库存私密，只有 assets 为空时才由上层处理
       if (data.assets !== undefined || data.success !== undefined) {
         console.log(`[${cfg.name}] success`);
         return data;
@@ -330,17 +330,36 @@ async function fetchAndRenderInventory(steamId64, appId, ctxId, apiKey) {
     const assets = data.assets || [];
     const descriptions = data.descriptions || [];
 
-    // total_inventory_count 为 0 且 rwgrsn 为 -2 说明库存私密（兜底判断）
-    if (assets.length === 0 && data.total_inventory_count === 0 && data.rwgrsn === -2) {
-      showError('库存设为私密', '该账户的库存未公开。\n\n请在 Steam 客户端中：\n个人资料 → 编辑个人资料 → 隐私设置\n将「游戏详细信息」和「库存」设为公开。');
-      return;
-    }
-
+    // 有物品数据就直接展示（rwgrsn=-2 只表示部分物品有交易限制，不影响展示）
     if (assets.length === 0) {
+      // assets 为空时，才判断原因
+      if (data.rwgrsn === -2) {
+        // rwgrsn=-2 且 assets 为空：库存私密，或刚购买物品在七天交易限制中
+        const totalCount = data.total_inventory_count || 0;
+        if (totalCount > 0) {
+          // 有计数但无物品——很可能是七天内新购物品（交易限制），不是隐私问题
+          showError(
+            '库存暂时不可见',
+            `Steam 显示该账户有 ${totalCount} 件物品，但当前无法读取详情。\n\n可能原因：\n` +
+            '• 近期购买的物品处于七天交易限制期，Steam 不对外展示\n' +
+            '• 库存隐私设置未完全公开\n\n' +
+            '如果您刚刚购买物品，请等待七天后再查看。\n' +
+            '否则请在 Steam 客户端中检查：个人资料 → 编辑个人资料 → 隐私设置'
+          );
+        } else {
+          showError('库存设为私密', '该账户的库存未公开，或该账号没有 CS2 物品。\n\n如需查看，请在 Steam 客户端中：\n个人资料 → 编辑个人资料 → 隐私设置\n将「游戏详细信息」和「库存」设为公开。');
+        }
+        return;
+      }
       updateUserInfo(playerInfo, steamId64, appId, 0);
       hideLoading();
       document.getElementById('emptyState').style.display = 'block';
       return;
+    }
+
+    // 有 assets，但 rwgrsn=-2 说明有物品受交易限制，仍然展示，加一个提示 toast
+    if (data.rwgrsn === -2) {
+      showToast('部分物品处于交易限制期（如近期购买），已展示可见物品', 5000);
     }
 
     // Build item map
